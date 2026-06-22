@@ -1,0 +1,12 @@
+# Optional dependencies for a *persistent* RAG vector store (Chroma).
+#
+# The core project runs RAG without these via an in-memory cosine index
+# (see src/ai_media_assistant/agent/rag.py). Install these only if you want to
+# use `build_chroma_index()` for on-disk persistence.
+#
+#   pip install -r requirements-optional.txt
+#
+# Note: on some Python versions chromadb pulls native deps (chroma-hnswlib).
+# Use a recent chromadb (>=1.0) which ships prebuilt wheels.
+langchain-chroma>=0.2
+chromadb>=1.0

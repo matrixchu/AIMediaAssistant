@@ -1,0 +1,41 @@
+# ---- Core web / API ----
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+httpx>=0.27
+
+# ---- Database ----
+SQLAlchemy>=2.0,<3.0
+PyMySQL>=1.1
+alembic>=1.13
+
+# ---- AI Agent framework ----
+langchain>=0.3,<0.4
+langchain-core>=0.3,<0.4
+langchain-community>=0.3,<0.4
+langgraph>=0.2,<0.3
+langchain-ollama>=0.2
+langchain-openai>=0.2
+
+# ---- RAG / vector store ----
+# The default RAG uses an in-memory cosine index (agent/rag.py) with offline
+# embeddings, so no extra packages are required. For a *persistent* vector store
+# install the optional extras:  pip install -r requirements-optional.txt
+
+# ---- MCP (Model Context Protocol) ----
+mcp>=1.12
+
+# ---- Integrations ----
+qbittorrent-api>=2024.1.58
+feedparser>=6.0
+beautifulsoup4>=4.12
+
+# ---- Scheduling / resilience ----
+APScheduler>=3.10
+tenacity>=8.3
+
+# ---- Tooling / tests ----
+pytest>=8.2
+pytest-asyncio>=0.23

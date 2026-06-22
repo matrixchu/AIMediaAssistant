@@ -1,0 +1,38 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Defaults run offline. Uncomment to use the bundled MySQL service.
+      # DB_HOST: mysql
+      # DB_USER: media
+      # DB_PASSWORD: media
+      # DB_NAME: ai_media_assistant
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      EMBED_PROVIDER: fallback
+      PT_MOCK: "true"
+      QB_MOCK: "true"
+    volumes:
+      - ../data:/app/data
+    # depends_on:
+    #   - mysql
+
+  # Optional MySQL — uncomment the `depends_on` and DB_* env above to use it.
+  # mysql:
+  #   image: mysql:8
+  #   environment:
+  #     MYSQL_DATABASE: ai_media_assistant
+  #     MYSQL_USER: media
+  #     MYSQL_PASSWORD: media
+  #     MYSQL_ROOT_PASSWORD: rootpw
+  #   ports:
+  #     - "3306:3306"
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+
+# volumes:
+#   mysql_data:
