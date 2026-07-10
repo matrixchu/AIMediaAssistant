@@ -15,6 +15,7 @@ from ..database import session_scope
 from ..database import repositories as repo
 from ..shared.logging import get_logger
 from .download_service import DownloadService
+from .follow_service import FollowService, parse_release_title
 from .rss_cache_service import RssCacheService
 
 logger = get_logger(__name__)
@@ -30,9 +31,12 @@ class JobControlResult:
 class SchedulerManager:
     """Owns the application scheduler and persists run state in MySQL/SQLite."""
 
+    _AUTO_FOLLOW_RECENT_SCAN_LIMIT = 200
+
     def __init__(self) -> None:
         self._scheduler = BackgroundScheduler(timezone="UTC")
         self._download = DownloadService()
+        self._follow = FollowService()
         self._lock = Lock()
         self._started = False
         self._registered = False
@@ -191,7 +195,79 @@ class SchedulerManager:
             job.next_run_time = self._job_next_run_time(job_name)
 
     def _run_rss_sync(self) -> None:
-        self._execute_job("rss_sync", RssCacheService.refresh_latest_resources)
+        def _runner() -> dict[str, Any]:
+            summary = RssCacheService.refresh_latest_resources()
+            auto_follow_downloads = 0
+            considered_releases = 0
+            reconcile_downloads = 0
+            reconciled_subscriptions = 0
+            releases: list[dict[str, Any]] = []
+            releases.extend(summary.get("new_resources", []))
+
+            # Backfill recent cached rows too, so episodes missed in a prior run
+            # can still be auto-followed after parser/matching improvements.
+            with session_scope() as session:
+                for row in repo.list_recent_resources(session, limit=self._AUTO_FOLLOW_RECENT_SCAN_LIMIT):
+                    releases.append({"id": row.id, "title": row.title})
+
+            seen_ids: set[int] = set()
+            seen_titles: set[str] = set()
+            for item in releases:
+                item_id = item.get("id")
+                title = str(item.get("title") or "")
+                if not title:
+                    continue
+                if isinstance(item_id, int):
+                    if item_id in seen_ids:
+                        continue
+                    seen_ids.add(item_id)
+                elif title in seen_titles:
+                    continue
+                seen_titles.add(title)
+
+                parsed = parse_release_title(str(item.get("title") or ""))
+                if not parsed:
+                    continue
+                show_title, season, episode = parsed
+                considered_releases += 1
+                try:
+                    result = self._follow.handle_release(
+                        show_title,
+                        season,
+                        episode,
+                        confirm=True,
+                        release_title=title,
+                    )
+                    if result:
+                        auto_follow_downloads += 1
+                except Exception as exc:  # noqa: BLE001 - keep job resilient
+                    logger.warning(
+                        "Auto-follow release handling failed for '%s' S%02dE%02d: %s",
+                        show_title,
+                        season,
+                        episode,
+                        exc,
+                    )
+
+            with session_scope() as session:
+                active_subs = [s.id for s in repo.list_active_subscriptions(session)]
+            for sub_id in active_subs:
+                try:
+                    r = self._follow.reconcile_subscription(sub_id, confirm=True)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Subscription reconcile failed for sub=%s: %s", sub_id, exc)
+                    continue
+                reconciled_subscriptions += 1
+                reconcile_downloads += len(r.get("downloaded", []))
+
+            summary["auto_follow_scan_total"] = len(releases)
+            summary["considered_releases"] = considered_releases
+            summary["auto_follow_downloads"] = auto_follow_downloads
+            summary["reconciled_subscriptions"] = reconciled_subscriptions
+            summary["reconcile_downloads"] = reconcile_downloads
+            return summary
+
+        self._execute_job("rss_sync", _runner)
 
     def _refresh_downloads(self) -> None:
         def _runner() -> dict[str, Any]:

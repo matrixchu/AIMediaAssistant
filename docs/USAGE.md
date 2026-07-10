@@ -205,6 +205,13 @@ uvicorn ai_media_assistant.api.app:app --host 0.0.0.0 --port 8000
 `POST /api/follow`、`GET /api/downloads`、`GET /api/recommendations`、
 `GET /api/tasks/{id}/trace`（查看 Agent 执行轨迹）。
 
+如果启动时报 `address already in use`，说明 8000 端口已经被另一个进程占用。先停止旧的
+`uvicorn` / `python` 进程，或者改成别的端口，例如：
+
+```bash
+uvicorn ai_media_assistant.api.app:app --host 0.0.0.0 --port 8001
+```
+
 ### 6.3 OpenClaw + 本地 Ollama（自然语言，零 API 费用）★推荐
 
 ```bash

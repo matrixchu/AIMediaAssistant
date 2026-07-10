@@ -32,7 +32,8 @@ import feedparser
 
 from ...shared.config import get_settings
 from ...shared.logging import get_logger
-from ...shared.schemas import TorrentResourceDTO
+from ...shared.schemas import SearchQuery, TorrentResourceDTO
+from .web import WebPTSearchClient
 
 logger = get_logger(__name__)
 
@@ -79,7 +80,10 @@ class RssPTClient:
         parsed = feedparser.parse(url)
         if parsed.bozo and not parsed.entries:
             logger.error("PT RSS parse failed for %s: %s", _redact(url), parsed.bozo_exception)
-            return []
+            fallback = self._fallback_latest_from_web(limit)
+            if fallback:
+                logger.info("PT RSS fallback via web latest -> %d resources", len(fallback))
+            return fallback
 
         results: list[TorrentResourceDTO] = []
         for entry in parsed.entries:
@@ -92,6 +96,15 @@ class RssPTClient:
 
         results.sort(key=lambda r: (r.seeders, r.publish_time or datetime.min), reverse=True)
         return results[:limit]
+
+    def _fallback_latest_from_web(self, limit: int) -> list[TorrentResourceDTO]:
+        web = WebPTSearchClient()
+        if not web.configured():
+            return []
+        # Empty keyword asks tracker for the default/latest listing page.
+        rows = web.search(SearchQuery(keyword=""), limit=limit)
+        filtered = [r for r in rows if (not r.seeders) or r.seeders >= self.min_seeders]
+        return filtered[:limit]
 
     # ------------------------------------------------------------------ #
     def _build_url(self, keyword: str) -> str:

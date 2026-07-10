@@ -47,6 +47,24 @@ def test_apply_filters_category_alias_keeps_tv_and_unknown_for_zongyi():
     assert [r.title for r in out] == ["A", "B"]
 
 
+def test_normalize_keyword_strips_follow_verb_and_normalizes_season():
+    q = SearchService._normalize_query(
+        SearchQuery(keyword="请调用 ai-media 追龙之家族 第三季")
+    )
+    assert "追" not in q.keyword
+    assert "龙之家族" in q.keyword
+    assert "S03" in q.keyword
+
+
+def test_apply_filters_quality_hd_matches_webrip_like_variants():
+    items = [
+        TorrentResourceDTO(site_name="x", title="A 1080p WEB-DL", quality="WEB-DL", seeders=10),
+        TorrentResourceDTO(site_name="x", title="B 2160p REMUX", quality="REMUX", seeders=10),
+    ]
+    out = SearchService._apply_filters(items, SearchQuery(quality="hd"))
+    assert [r.title for r in out] == ["A 1080p WEB-DL", "B 2160p REMUX"]
+
+
 def test_download_flow_and_progress():
     search = SearchService()
     download = DownloadService()

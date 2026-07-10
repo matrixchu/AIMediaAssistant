@@ -25,14 +25,27 @@ class RssCacheService:
         client = get_pt_client()
         resources = client.fetch_latest_resources(limit=limit)
         stored = 0
+        inserted = 0
+        new_resources: list[dict[str, Any]] = []
         with session_scope() as session:
             for dto in resources:
+                existed = repo.find_resource_by_site_title(session, dto.site_name, dto.title)
                 row = repo.upsert_resource(session, dto)
                 dto.id = row.id
                 stored += 1
+                if existed is None:
+                    inserted += 1
+                    new_resources.append(
+                        {
+                            "id": row.id,
+                            "title": row.title,
+                        }
+                    )
         summary = {
             "fetched": len(resources),
             "stored": stored,
+            "inserted": inserted,
+            "new_resources": new_resources,
             "synced_at": datetime.utcnow().isoformat(),
         }
         logger.info("RSS sync complete: %s", summary)

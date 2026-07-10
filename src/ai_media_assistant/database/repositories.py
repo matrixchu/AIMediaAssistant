@@ -62,6 +62,19 @@ def get_resource(session: Session, resource_id: int) -> TorrentResource | None:
     return session.get(TorrentResource, resource_id)
 
 
+def find_resource_by_site_title(
+    session: Session,
+    site_name: str | None,
+    title: str,
+) -> TorrentResource | None:
+    return session.scalar(
+        select(TorrentResource).where(
+            TorrentResource.site_name == site_name,
+            TorrentResource.title == title,
+        )
+    )
+
+
 def list_recent_resources(session: Session, limit: int = 50) -> list[TorrentResource]:
     return list(
         session.scalars(

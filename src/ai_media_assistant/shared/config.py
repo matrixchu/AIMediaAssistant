@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     qb_mock: bool = True
     download_save_path: str = "/downloads"
     qb_category: str = "ai-media"
+    follow_tv_base_path: str = "/downloads/video/tv"
 
     # ---- PT site ----
     # Backend: "mock" (offline sample catalog), "rss" (your member tracker's

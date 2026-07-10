@@ -46,6 +46,8 @@ def search_media(
 
     Use this when the user asks things like "有哪些资源" / "哪些版本" /
     "有哪些资源可以下载".
+    Do NOT use this tool for subscription intent like "追XXX" / "follow XXX";
+    use ``follow_show`` for that.
     The returned ``id`` is required by ``download_media``.
     """
     query = SearchQuery(
@@ -114,12 +116,21 @@ def download_media_default(resource_id: int, confirm: bool = False) -> dict:
 
 @mcp.tool()
 def follow_show(title: str, season: int = 0, quality: str = "") -> dict:
-    """Subscribe to a TV show and download currently-available episodes.
+    """Subscribe to a TV show (fast response) and enable auto-follow.
 
+    Use this tool when user says "追某个剧" / "follow a show".
     Pass season=0 to follow the whole show, or a season number to scope it.
+    quality can be a variant preference such as 2160P / 1080P.
+    Initial full backfill is intentionally skipped here to avoid MCP timeout;
+    scheduler handles ongoing automatic follow-up downloads.
     """
     try:
-        return _follow.follow_show(title, season=season or None, quality=quality or None)
+        return _follow.follow_show(
+            title,
+            season=season or None,
+            quality=quality or None,
+            initial_sync=False,
+        )
     except AIMediaError as exc:
         return {"error": str(exc)}
 

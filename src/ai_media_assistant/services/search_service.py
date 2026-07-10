@@ -17,6 +17,11 @@ logger = get_logger(__name__)
 # Ranking weights for resolution / quality preferences.
 _RESOLUTION_RANK = {"2160P": 4, "1080P": 3, "720P": 2, "480P": 1}
 _QUALITY_RANK = {"REMUX": 5, "BLURAY": 4, "WEB-DL": 3, "WEBRIP": 2, "HDTV": 1}
+_QUALITY_ALIAS_SET = {
+    "HD": {"REMUX", "BLURAY", "WEB-DL", "WEBRIP", "HDTV"},
+    "UHD": {"2160P", "REMUX", "BLURAY", "WEB-DL", "WEBRIP", "HDTV"},
+    "4K": {"2160P", "REMUX", "BLURAY", "WEB-DL", "WEBRIP", "HDTV"},
+}
 _CATEGORY_ALIAS = {
     "movie": "movie",
     "电影": "movie",
@@ -155,8 +160,61 @@ class SearchService:
     @staticmethod
     def _normalize_query(query: str | SearchQuery) -> SearchQuery:
         if isinstance(query, SearchQuery):
-            return query
-        return SearchQuery(keyword=query.strip())
+            q = query.model_copy(deep=True)
+            q.keyword = SearchService._normalize_keyword(q.keyword)
+            return q
+        return SearchQuery(keyword=SearchService._normalize_keyword(query.strip()))
+
+    @staticmethod
+    def _normalize_keyword(keyword: str) -> str:
+        text = (keyword or "").strip()
+        if not text:
+            return ""
+
+        # Remove leading intent verbs commonly injected by chat agents.
+        text = re.sub(
+            r"^(请帮我|帮我|请|我要|我想|想要|麻烦|请调用|调用|追剧|追番|追|搜索|查找|查询)+",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        # Remove tool/server name noise from agent-generated prompts.
+        text = re.sub(r"\b(ai-media|ai media|aimedia)\b", "", text, flags=re.IGNORECASE)
+        text = text.strip()
+        text = re.sub(
+            r"^(请帮我|帮我|请|我要|我想|想要|麻烦|请调用|调用|追剧|追番|追|搜索|查找|查询)+",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        # Normalize season phrases, e.g. "第三季" / "第3季" -> "S03".
+        text = re.sub(
+            r"第([0-9一二三四五六七八九十两]{1,3})季",
+            lambda m: f" S{SearchService._cn_or_digit_to_int(m.group(1)):02d} ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    @staticmethod
+    def _cn_or_digit_to_int(raw: str) -> int:
+        s = (raw or "").strip()
+        if s.isdigit():
+            return max(0, int(s))
+
+        digits = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+        if s == "十":
+            return 10
+        if s.startswith("十") and len(s) == 2:
+            return 10 + digits.get(s[1], 0)
+        if s.endswith("十") and len(s) == 2:
+            return digits.get(s[0], 0) * 10
+        if len(s) == 3 and s[1] == "十":
+            return digits.get(s[0], 0) * 10 + digits.get(s[2], 0)
+        return digits.get(s, 0)
 
     @staticmethod
     def _apply_filters(
@@ -181,7 +239,7 @@ class SearchService:
                     continue
             if query.resolution and query.resolution.lower() not in (item.resolution or "").lower():
                 continue
-            if query.quality and query.quality.lower() not in (item.quality or "").lower():
+            if query.quality and not SearchService._quality_matches(item, query.quality):
                 continue
             if query.min_seeders is not None and item.seeders < query.min_seeders:
                 continue
@@ -198,6 +256,24 @@ class SearchService:
     def _normalize_category_token(value: str) -> str:
         token = (value or "").strip().lower()
         return _CATEGORY_ALIAS.get(token, token)
+
+    @staticmethod
+    def _quality_matches(item: TorrentResourceDTO, expected: str) -> bool:
+        want = (expected or "").strip().upper()
+        if not want:
+            return True
+        got_quality = (item.quality or "").upper()
+        got_res = (item.resolution or "").upper()
+        got_title = (item.title or "").upper()
+
+        if want in got_quality or want in got_res or want in got_title:
+            return True
+
+        aliases = _QUALITY_ALIAS_SET.get(want)
+        if aliases:
+            if any(a in got_quality or a in got_res or a in got_title for a in aliases):
+                return True
+        return False
 
     # ------------------------------------------------------------------ #
     def _load_preferences(self) -> dict[str, str]:
